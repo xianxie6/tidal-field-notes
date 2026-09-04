@@ -4,7 +4,10 @@
 
 ## 在线体验
 
-网站发布完成后，可直接通过仓库首页的 Website 链接进入，无需安装。
+- Cloudflare Pages：<https://tidal-field-notes.pages.dev/>
+- ChatGPT Sites：<https://tidal-field-notes.lively-bud-4907.chatgpt.site/>
+
+也可以直接通过 GitHub 仓库首页的 Website 链接进入，无需安装。
 
 ## 启动
 
@@ -24,6 +27,12 @@ npm run dev
 ```bash
 npm run build
 npm run preview
+```
+
+部署到 Cloudflare Pages：
+
+```bash
+npm run deploy:cloudflare
 ```
 
 ## 操作
