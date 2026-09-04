@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <script>
+      if (window.location.protocol === 'file:') {
+        window.location.replace('http://localhost:5173/');
+      }
+    </script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#051b25" />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='13' fill='%230b3d46'/%3E%3Cpath d='M8 17c4-5 12-5 16 0-4 4-12 4-16 0Z' fill='%23d9c58b'/%3E%3C/svg%3E" />
+    <meta
+      name="description"
+      content="潮下笔记：一段可以实时探索的自然纪录片式海底峡谷。"
+    />
+    <title>潮下笔记 · Below the Surface</title>
+  </head>
+  <body>
+    <main id="experience" aria-label="可交互海底峡谷">
+      <canvas id="ocean-canvas"></canvas>
+
+      <div class="water-vignette" aria-hidden="true"></div>
+      <div class="film-grain" aria-hidden="true"></div>
+
+      <header class="field-header">
+        <div class="field-title">
+          <span class="field-title__mark" aria-hidden="true"></span>
+          <div>
+            <p>潮下笔记</p>
+            <span>Below the Surface</span>
+          </div>
+        </div>
+        <button id="quality-toggle" class="quality-toggle" type="button">
+          <span>水体质量</span>
+          <strong id="quality-label">自动</strong>
+        </button>
+      </header>
+
+      <button id="diver-entry" class="diver-entry" type="button">
+        <span>成为潜水员</span>
+        <small>ADD YOUR PORTRAIT</small>
+      </button>
+
+      <aside class="depth-readout" aria-label="潜水信息">
+        <span class="depth-readout__line"></span>
+        <p>珊瑚峡谷</p>
+        <strong id="depth-value">− 08.4 M</strong>
+        <small>南缘观察带 · 01</small>
+      </aside>
+
+      <div id="reticle" class="reticle" aria-hidden="true">
+        <span></span>
+      </div>
+
+      <nav class="dive-controls" aria-label="潜水移动控制">
+        <span class="dive-controls__label">自由潜航</span>
+        <button class="dive-control dive-control--up" data-move="forward" type="button" aria-label="向前游">↑</button>
+        <button class="dive-control dive-control--left" data-move="left" type="button" aria-label="向左游">←</button>
+        <span class="dive-controls__center" aria-hidden="true"></span>
+        <button class="dive-control dive-control--right" data-move="right" type="button" aria-label="向右游">→</button>
+        <button class="dive-control dive-control--back" data-move="back" type="button" aria-label="向后游">↓</button>
+        <button class="dive-control dive-control--rise" data-move="up" type="button" aria-label="上浮">浮</button>
+        <button class="dive-control dive-control--sink" data-move="down" type="button" aria-label="下潜">潜</button>
+      </nav>
+
+      <section id="observation-card" class="observation-card" aria-live="polite" hidden>
+        <button id="close-observation" type="button" aria-label="关闭观察卡片">×</button>
+        <p class="observation-card__index">FIELD NOTE · 001</p>
+        <h2>蓝绿拟鲹群</h2>
+        <p class="observation-card__latin">Carangidae / juvenile study</p>
+        <div class="observation-card__rule"></div>
+        <p>受光束惊扰时会短暂散开，随后沿邻近个体的方向重新聚拢。</p>
+      </section>
+
+      <section id="diver-panel" class="diver-panel" aria-labelledby="diver-panel-title" hidden>
+        <button id="close-diver-panel" class="diver-panel__close" type="button" aria-label="关闭上传面板">×</button>
+        <p class="diver-panel__eyebrow">PERSONAL DIVE · 2.5D</p>
+        <h2 id="diver-panel-title">上传你的正面照</h2>
+        <p class="diver-panel__description">保留真人面容，立即穿上潜水服进入鱼群。头部位于画面中上部时效果最好。
+        </p>
+        <label class="portrait-upload" for="portrait-file">
+          <input id="portrait-file" type="file" accept="image/jpeg,image/png,image/webp" />
+          <img id="portrait-preview" alt="待使用的潜水员头像预览" hidden />
+          <span id="portrait-upload-copy">选择照片</span>
+          <small>JPG / PNG / WEBP · 仅在当前页面处理</small>
+        </label>
+        <button id="begin-dive" class="begin-dive" type="button" disabled>换装并潜入</button>
+      </section>
+
+      <div id="dive-transition" class="dive-transition" aria-hidden="true">
+        <span></span><span></span><span></span><span></span><span></span>
+      </div>
+
+      <footer class="field-footer">
+        <p id="interaction-hint">WASD 游动 <i>·</i> 拖动画面转向 <i>·</i> Q / E 升降 <i>·</i> 点击触摸鱼</p>
+        <p class="sound-note">自由潜航 / 3D 探索模式</p>
+      </footer>
+
+      <div id="loading-screen" class="loading-screen" role="status" aria-live="polite">
+        <div class="loading-screen__content">
+          <div class="loading-screen__ring" aria-hidden="true"></div>
+          <p>正在校准海水能见度</p>
+          <span id="loading-progress">00</span>
+        </div>
+      </div>
+
+      <div id="fatal-error" class="fatal-error" hidden>
+        <p>当前浏览器无法建立水下场景。</p>
+        <span>请使用支持 WebGL 2 的最新版桌面 Chrome。</span>
+      </div>
+    </main>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
