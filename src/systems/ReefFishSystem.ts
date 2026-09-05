@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import type { QualityPreset } from '../core/config';
 import { createRandom, range } from '../utils/random';
+import { createFinMembrane } from '../utils/fishGeometry';
 
 interface FishShader {
   uniforms: Record<string, { value: number }>;
@@ -64,7 +65,7 @@ export class ReefFishSystem {
     this.addSchool(scene, 'tetra', tetra, 0x8bd9c9, 0.84, 8123);
     this.addSchool(scene, 'discus', discus, 0x80c6bd, 0.43, 10111);
     this.addSchool(scene, 'angel', angel, 0xe59a45, 0.46, 12091);
-    this.addSchool(scene, 'garnet', total - opal - koi - tetra - discus - angel, 0xa77b43, 0.57, 19139);
+    this.addSchool(scene, 'garnet', total - opal - koi - tetra - discus - angel, 0xe974a5, 0.57, 19139);
   }
 
   setAvoidancePoint(point: THREE.Vector3): void {
@@ -270,13 +271,22 @@ export class ReefFishSystem {
       phases[i] = random() * Math.PI * 2;
       const scaleRange: Record<Pattern, [number, number]> = {
         opal: [0.37, 0.57],
-        koi: [0.51, 0.76],
+        koi: [0.39, 0.54],
         tetra: [0.34, 0.51],
-        discus: [0.47, 0.68],
-        angel: [0.48, 0.7],
-        garnet: [0.44, 0.66],
+        discus: [0.35, 0.49],
+        angel: [0.34, 0.48],
+        garnet: [0.36, 0.51],
       };
       scales[i] = range(random, ...scaleRange[pattern]);
+      if (pattern !== 'tetra' && i < 2) {
+        const kind = ['opal', 'koi', 'discus', 'angel', 'garnet'].indexOf(pattern);
+        laneX[i] = (i === 0 ? -1 : 1) * (1.8 + kind * 0.65);
+        laneY[i] = 2.7 + (kind % 3) * 0.65;
+        laneZ[i] = 3.5 - kind * 1.6 - i * 2.5;
+        positions[index] = laneX[i];
+        positions[index + 1] = laneY[i];
+        positions[index + 2] = laneZ[i];
+      }
       if (pattern === 'tetra' && i < 3) {
         const nearX = [-4.6, 4.9, -2.8];
         const nearY = [4.35, 3.75, 5.05];
@@ -337,8 +347,14 @@ export class ReefFishSystem {
       garnet: [[-1, 0.06], [-0.88, 0.34], [-0.55, 0.83], [-0.08, 1.02], [0.4, 0.98], [0.76, 0.84], [0.95, 0.56], [1, 0.035]],
     };
     const [bodyWidth, bodyHeight, bodyLength] = this.bodyScale(pattern);
-    const profile = profiles[pattern].map(([z, radius]) => new THREE.Vector2(radius, z * bodyLength));
-    const body = new THREE.LatheGeometry(profile, 20);
+    const profileCurve = new THREE.CatmullRomCurve3(
+      profiles[pattern].map(([z, radius]) => new THREE.Vector3(
+        radius * (1 - THREE.MathUtils.smoothstep(z, 0.42, 1) * 0.36), z * bodyLength, 0,
+      )),
+      false, 'centripetal',
+    );
+    const profile = profileCurve.getPoints(48).map((p) => new THREE.Vector2(Math.max(0.015, p.x), p.y));
+    const body = new THREE.LatheGeometry(profile, 28);
     body.rotateX(Math.PI / 2);
     body.scale(bodyWidth, bodyHeight, 1);
     const parts: THREE.BufferGeometry[] = [body];
@@ -358,20 +374,11 @@ export class ReefFishSystem {
   private createFinGeometry(pattern: Pattern): THREE.BufferGeometry {
     const bodyScale = this.bodyScale(pattern);
 
-    const tail = new THREE.BufferGeometry();
     const tailHeight: Record<Pattern, number> = { opal: 0.38, koi: 0.66, tetra: 0.34, discus: 0.48, angel: 0.46, garnet: 0.57 };
     const tailLength: Record<Pattern, number> = { opal: 0.93, koi: 1.08, tetra: 1.02, discus: 0.88, angel: 0.91, garnet: 0.95 };
     const bodyEnd = pattern === 'tetra' || pattern === 'opal' ? -0.57 : -0.46;
-    tail.setAttribute('position', new THREE.Float32BufferAttribute([
-      0, 0.09, bodyEnd, 0, tailHeight[pattern], -tailLength[pattern], 0, 0, -0.73,
-      0, -0.09, bodyEnd, 0, 0, -0.73, 0, -tailHeight[pattern], -tailLength[pattern],
-    ], 3));
-    tail.setAttribute('uv', new THREE.Float32BufferAttribute([
-      1, 0.58, 0, 1, 0.42, 0.5,
-      1, 0.42, 0.42, 0.5, 0, 0,
-    ], 2));
-    tail.setIndex([0, 1, 2, 3, 4, 5]);
-    tail.computeVertexNormals();
+    const tailUpper = this.createFin([0, 0, bodyEnd, 0, tailHeight[pattern], -tailLength[pattern], 0, 0, -0.8]);
+    const tailLower = this.createFin([0, 0, bodyEnd, 0, 0, -0.8, 0, -tailHeight[pattern], -tailLength[pattern]]);
 
     const dorsal = new THREE.BufferGeometry();
     const dorsalTop: Record<Pattern, number> = { opal: 0.57, koi: 0.76, tetra: 0.43, discus: 0.94, angel: 0.98, garnet: 0.62 };
@@ -390,7 +397,9 @@ export class ReefFishSystem {
     ]);
     const pectoralRight = pectoralLeft.clone();
     pectoralRight.scale(-1, 1, 1);
-    const parts: THREE.BufferGeometry[] = [tail, dorsal, pectoralLeft, pectoralRight];
+    const curvedDorsal = this.createFin(Array.from(dorsal.getAttribute('position').array));
+    dorsal.dispose();
+    const parts: THREE.BufferGeometry[] = [tailUpper, tailLower, curvedDorsal, pectoralLeft, pectoralRight];
     if (pattern === 'koi' || pattern === 'tetra' || pattern === 'discus' || pattern === 'angel') {
       const anal = this.createFin([
         0, -bodyScale[1] * 0.7, 0.2,
@@ -440,40 +449,22 @@ export class ReefFishSystem {
     const parts: THREE.BufferGeometry[] = [];
     for (const side of [-1, 1]) {
       const iris = new THREE.SphereGeometry(eyeRadius, 10, 7);
-      iris.translate(side * (bodyWidth + eyeRadius * 0.18), bodyHeight * 0.18, bodyLength * 0.68);
+      iris.translate(side * (bodyWidth * 0.77 + eyeRadius * 0.12), bodyHeight * 0.18, bodyLength * 0.64);
       this.addGeometryColor(iris, pattern === 'tetra' ? 0x8de1d4 : pattern === 'opal' ? 0x8aa7c8 : 0xb69a5a);
       const pupil = new THREE.SphereGeometry(eyeRadius * 0.58, 9, 6);
-      pupil.translate(side * (bodyWidth + eyeRadius * 0.72), bodyHeight * 0.18, bodyLength * 0.69);
+      pupil.translate(side * (bodyWidth * 0.77 + eyeRadius * 0.66), bodyHeight * 0.18, bodyLength * 0.65);
       this.addGeometryColor(pupil, 0x05090a);
       if (pattern === 'tetra') {
         const catchlight = new THREE.SphereGeometry(eyeRadius * 0.16, 7, 5);
         catchlight.translate(
-          side * (bodyWidth + eyeRadius * 1.2),
+          side * (bodyWidth * 0.77 + eyeRadius * 1.05),
           bodyHeight * 0.24,
-          bodyLength * 0.725,
+          bodyLength * 0.68,
         );
         this.addGeometryColor(catchlight, 0xeafff7);
         parts.push(catchlight);
       }
-      const gill = new THREE.TorusGeometry(bodyHeight * 0.3, 0.008, 5, 11, Math.PI * 1.08);
-      gill.rotateZ(pattern === 'angel' ? 0.35 : 0.18);
-      gill.rotateY(Math.PI / 2);
-      gill.translate(side * (bodyWidth + 0.006), -bodyHeight * 0.04, bodyLength * 0.36);
-      this.addGeometryColor(gill, pattern === 'angel' ? 0x76545c : 0x5b6f68);
-
-      const lateralLine = new THREE.TubeGeometry(
-        new THREE.QuadraticBezierCurve3(
-          new THREE.Vector3(side * (bodyWidth + 0.004), bodyHeight * 0.015, -bodyLength * 0.58),
-          new THREE.Vector3(side * (bodyWidth + 0.006), bodyHeight * 0.055, -bodyLength * 0.04),
-          new THREE.Vector3(side * (bodyWidth + 0.004), bodyHeight * 0.02, bodyLength * 0.27),
-        ),
-        8,
-        pattern === 'tetra' ? 0.0034 : 0.0042,
-        3,
-        false,
-      );
-      this.addGeometryColor(lateralLine, 0x78918a);
-      parts.push(iris, pupil, gill, lateralLine);
+      parts.push(iris, pupil);
     }
 
     const mouthRadius = pattern === 'angel' || pattern === 'koi' ? 0.043 : 0.031;
@@ -498,16 +489,16 @@ export class ReefFishSystem {
       transparent: false,
       opacity: 1,
       depthWrite: true,
-      roughness: 0.43,
+      roughness: 0.34,
       metalness: 0.012,
-      clearcoat: 0.24,
-      clearcoatRoughness: 0.33,
+      clearcoat: 0.32,
+      clearcoatRoughness: 0.27,
       iridescence: pattern === 'tetra' ? 0.44 : 0.23,
       iridescenceIOR: 1.32,
       iridescenceThicknessRange: [110, 390],
       envMapIntensity: 0.7,
       bumpMap: this.scaleBumpTexture,
-      bumpScale: pattern === 'tetra' ? 0.01 : 0.014,
+      bumpScale: pattern === 'tetra' ? 0.006 : 0.009,
       side: THREE.DoubleSide,
     });
     material.onBeforeCompile = (shader) => {
@@ -531,7 +522,7 @@ export class ReefFishSystem {
         );
       shader.fragmentShader = shader.fragmentShader
         .replace('#include <common>', '#include <common>\nuniform float uReefFishTime;\nvarying vec3 vReefFishLocal;')
-        .replace('#include <color_fragment>', `#include <color_fragment>\n${this.patternShader(pattern)}\n${this.sharedPearlescenceShader()}`)
+        .replace('#include <color_fragment>', `#include <color_fragment>\n${this.patternShader(pattern)}\n${this.sharedPearlescenceShader(pattern)}`)
         .replace(
           '#include <opaque_fragment>',
           `outgoingLight = pow(max(outgoingLight, vec3(0.0)), vec3(1.08)) * 0.48;
@@ -539,7 +530,7 @@ export class ReefFishSystem {
         );
       shaderRef.current = shader as FishShader;
     };
-    material.customProgramCacheKey = () => `tidal-reef-fish-${pattern}-v4-visible-patterns`;
+    material.customProgramCacheKey = () => `tidal-reef-fish-${pattern}-v6-jewel-patterns`;
     return material;
   }
 
@@ -570,7 +561,7 @@ export class ReefFishSystem {
       shader.vertexShader = shader.vertexShader
         .replace(
           '#include <common>',
-          '#include <common>\nuniform float uReefFishTime;\nvarying vec3 vReefFinLocal;',
+          '#include <common>\nuniform float uReefFishTime;\nvarying vec3 vReefFinLocal;\nvarying vec2 vFinUv;',
         )
         .replace(
           '#include <begin_vertex>',
@@ -581,22 +572,24 @@ export class ReefFishSystem {
           transformed.x += sin(uReefFishTime * 3.4 + phase + transformed.y * 7.0) * abs(transformed.y) * 0.018;
           float pectoralMask = smoothstep(0.04, 0.16, abs(transformed.x)) * smoothstep(-0.2, 0.18, transformed.z);
           transformed.y += sin(uReefFishTime * 2.45 + phase * 1.37) * pectoralMask * 0.026;
-          vReefFinLocal = transformed;`,
+          vReefFinLocal = transformed;
+          vFinUv = uv;`,
         );
       shader.fragmentShader = shader.fragmentShader
-        .replace('#include <common>', '#include <common>\nvarying vec3 vReefFinLocal;')
+        .replace('#include <common>', '#include <common>\nvarying vec3 vReefFinLocal;\nvarying vec2 vFinUv;')
         .replace(
           '#include <color_fragment>',
           `#include <color_fragment>
-          float finRays = pow(abs(sin(vReefFinLocal.y * 36.0 + vReefFinLocal.z * 8.0)), 9.0);
-          float tailRays = pow(abs(sin((vReefFinLocal.y + vReefFinLocal.z) * 27.0)), 11.0);
-          float rayDetail = max(finRays, tailRays) * 0.34;
+          float finRays = pow(abs(cos(vFinUv.x * 56.5487)), 18.0);
+          float rayDetail = finRays * 0.26;
           diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.42, 0.68, 0.67), rayDetail);
-          diffuseColor.a *= 0.64 + rayDetail;`,
+          float pearlEdge = smoothstep(0.91, 0.99, vFinUv.y);
+          diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.62, 0.78, 0.85), pearlEdge * 0.36);
+          diffuseColor.a *= mix(0.85, 0.38, vFinUv.y) + rayDetail + pearlEdge * 0.18;`,
         );
       shaderRef.current = shader as FishShader;
     };
-    material.customProgramCacheKey = () => `tidal-reef-fin-${pattern}-v1`;
+    material.customProgramCacheKey = () => `tidal-reef-fin-${pattern}-v2-ribbed-membrane`;
     return material;
   }
 
@@ -616,16 +609,16 @@ export class ReefFishSystem {
     if (pattern === 'opal') {
       return `float dorsalTone = smoothstep(-0.12, 0.28, vReefFishLocal.y);
       float lateral = exp(-pow((vReefFishLocal.y + 0.015) * 12.0, 2.0));
-      diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.28, 0.48, 0.55), dorsalTone * 0.44);
-      diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.33, 0.22, 0.48), smoothstep(0.18, 0.43, vReefFishLocal.y) * 0.48);
+      diffuseColor.rgb = mix(vec3(0.13, 0.68, 0.82), vec3(0.12, 0.17, 0.56), dorsalTone * 0.76);
+      diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.47, 0.22, 0.72), smoothstep(0.18, 0.43, vReefFishLocal.y) * 0.48);
       diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.16, 0.24, 0.25), lateral * 0.38);`;
     }
     if (pattern === 'koi') {
       return `float patches = sin(vReefFishLocal.z * 13.0 + sin(vReefFishLocal.y * 17.0) * 1.7) * 0.5 + 0.5;
       patches = smoothstep(0.48, 0.72, patches);
       float head = smoothstep(0.2, 0.48, vReefFishLocal.z);
-      diffuseColor.rgb = mix(vec3(0.43, 0.49, 0.48), vec3(0.67, 0.34, 0.15), patches * 0.7 + head * 0.38);
-      diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.22, 0.32, 0.34), patches * (1.0 - head) * 0.24);`;
+      diffuseColor.rgb = mix(vec3(0.72, 0.78, 0.75), vec3(0.92, 0.22, 0.065), clamp(patches * 0.85 + head * 0.3, 0.0, 1.0));
+      diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.13, 0.055, 0.12), patches * (1.0 - head) * 0.12);`;
     }
     if (pattern === 'tetra') {
       return `float bodyLengthMask = smoothstep(-0.62, -0.5, vReefFishLocal.z)
@@ -656,17 +649,16 @@ export class ReefFishSystem {
       pearlFlow = smoothstep(0.42, 0.82, pearlFlow);
       float warmCore = exp(-pow((vReefFishLocal.z + 0.02) * 3.5, 2.0) - pow(vReefFishLocal.y * 2.2, 2.0));
       float cheek = smoothstep(0.22, 0.43, vReefFishLocal.z);
-      diffuseColor.rgb = mix(vec3(0.38, 0.49, 0.51), vec3(0.56, 0.62, 0.6), pearlFlow * 0.42);
-      diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.6, 0.44, 0.27), warmCore * 0.32 + cheek * 0.18);
-      diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.3, 0.43, 0.48), (1.0 - pearlFlow) * 0.16);`;
+      diffuseColor.rgb = mix(vec3(0.025, 0.27, 0.38), vec3(0.12, 0.76, 0.71), pearlFlow * 0.88);
+      diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.94, 0.43, 0.13), (warmCore * 0.5 + cheek * 0.35) * (1.0 - pearlFlow));`;
     }
     if (pattern === 'angel') {
       return `float crown = smoothstep(0.05, 0.48, vReefFishLocal.y + vReefFishLocal.z * 0.2);
       float blueLower = 1.0 - smoothstep(-0.25, 0.12, vReefFishLocal.y);
       float bands = smoothstep(0.55, 0.84, sin((vReefFishLocal.z + 0.52) * 18.0) * 0.5 + 0.5);
-      diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.78, 0.35, 0.1), crown * 0.6);
-      diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.22, 0.43, 0.48), blueLower * 0.62);
-      diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.33, 0.2, 0.3), bands * 0.24);`;
+      diffuseColor.rgb = mix(vec3(0.7, 0.78, 0.8), vec3(0.95, 0.64, 0.14), crown * 0.78);
+      diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.09, 0.39, 0.66), blueLower * 0.58);
+      diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.035, 0.06, 0.13), bands * 0.86);`;
     }
     return `vec2 scaleUv = vec2((vReefFishLocal.z + 0.52) * 15.0, (vReefFishLocal.y + 0.42) * 18.0);
     float scaleRow = floor(scaleUv.y);
@@ -674,18 +666,32 @@ export class ReefFishSystem {
     float scaleY = fract(scaleUv.y) - 0.52;
     float scaleArc = 1.0 - smoothstep(0.035, 0.105, abs(length(vec2(scaleX, scaleY)) - 0.41));
     float copperTail = 1.0 - smoothstep(-0.72, -0.45, vReefFishLocal.z);
-    diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.52, 0.5, 0.3), scaleArc * 0.24);
-    diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.48, 0.24, 0.12), copperTail * 0.5);`;
+    float roseBack = smoothstep(-0.2, 0.3, vReefFishLocal.y);
+    diffuseColor.rgb = mix(vec3(0.95, 0.38, 0.24), vec3(0.42, 0.065, 0.4), roseBack);
+    diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.94, 0.66, 0.28), scaleArc * 0.28);
+    diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.68, 0.2, 0.47), copperTail * 0.5);`;
   }
 
-  private sharedPearlescenceShader(): string {
-    return `vec3 glitterCell = floor((vReefFishLocal + vec3(0.17, 0.31, 0.43)) * vec3(31.0, 29.0, 23.0));
+  private sharedPearlescenceShader(pattern: Pattern): string {
+    const [, height, length] = this.bodyScale(pattern);
+    return `vec2 flank = vReefFishLocal.zy / vec2(${length.toFixed(3)}, ${height.toFixed(3)});
+    float cheekLine = exp(-pow((flank.x - (0.35 - 0.24 * (1.0 - flank.y * flank.y))) * 95.0, 2.0))
+      * (1.0 - smoothstep(0.5, 0.76, abs(flank.y)));
+    float flankLine = exp(-pow((flank.y + 0.07 - flank.x * 0.025) * 100.0, 2.0))
+      * smoothstep(-0.88, -0.6, flank.x) * (1.0 - smoothstep(0.05, 0.2, flank.x));
+    vec2 cells = vec2(flank.x * 16.0, flank.y * 13.0);
+    cells.x += mod(floor(cells.y), 2.0) * 0.5;
+    float arcDistance = abs(length(fract(cells) - vec2(0.5, 0.3)) - 0.49);
+    float arc = 1.0 - smoothstep(0.028, 0.09, arcDistance);
+    float scaleMask = (1.0 - smoothstep(0.35, 0.68, flank.x)) * (1.0 - smoothstep(0.65, 1.0, abs(flank.y)));
+    diffuseColor.rgb *= 1.0 - cheekLine * 0.28 - flankLine * 0.12 - arc * scaleMask * 0.13;
+    diffuseColor.rgb += vec3(0.09, 0.13, 0.15) * arc * scaleMask * 0.14;
+    vec3 glitterCell = floor((vReefFishLocal + vec3(0.17, 0.31, 0.43)) * vec3(31.0, 29.0, 23.0));
     float glitterSeed = fract(sin(dot(glitterCell, vec3(12.9898, 78.233, 39.346))) * 43758.5453);
     float glitter = smoothstep(0.965, 0.998, glitterSeed);
     float viewFacing = abs(dot(normalize(vNormal), normalize(vViewPosition)));
     float angularGlint = pow(max(0.0, 1.0 - abs(viewFacing - 0.7) * 3.2), 7.0);
-    float travelingSpark = pow(max(0.0, sin(uReefFishTime * 0.85 + vReefFishLocal.z * 19.0 + glitterSeed * 8.0)), 12.0);
-    float glint = angularGlint * (0.24 + travelingSpark * 0.38);
+    float glint = angularGlint * (0.32 + glitterSeed * 0.24);
     vec3 glintColor = mix(vec3(0.48, 0.66, 0.68), vec3(0.7, 0.43, 0.16), step(0.68, glitterSeed));
     diffuseColor.rgb += glintColor * glitter * glint * 0.11;
     float scaleRows = sin(vReefFishLocal.z * 46.0 + sin(vReefFishLocal.y * 32.0) * 0.65);
@@ -746,12 +752,7 @@ export class ReefFishSystem {
   }
 
   private createFin(vertices: number[]): THREE.BufferGeometry {
-    const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
-    geometry.setAttribute('uv', new THREE.Float32BufferAttribute([1, 0, 0.5, 1, 0, 0], 2));
-    geometry.setIndex([0, 1, 2]);
-    geometry.computeVertexNormals();
-    return geometry;
+    return createFinMembrane(vertices);
   }
 
   private applyAvoidance(

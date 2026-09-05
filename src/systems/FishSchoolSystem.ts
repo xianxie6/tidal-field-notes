@@ -1,4 +1,6 @@
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { createFinMembrane } from '../utils/fishGeometry';
 import { CANYON, OCEAN, type QualityPreset } from '../core/config';
 import { createRandom, range } from '../utils/random';
 
@@ -65,10 +67,10 @@ export class FishSchoolSystem {
     geometry.setAttribute('aFishSpecies', new THREE.InstancedBufferAttribute(species, 1));
     const material = new THREE.MeshPhysicalMaterial({
       color: 0xaebcb4,
-      roughness: 0.43,
+      roughness: 0.35,
       metalness: 0.015,
-      clearcoat: 0.22,
-      clearcoatRoughness: 0.34,
+      clearcoat: 0.3,
+      clearcoatRoughness: 0.28,
       iridescence: 0.2,
       iridescenceIOR: 1.31,
       iridescenceThicknessRange: [120, 420],
@@ -117,10 +119,10 @@ export class FishSchoolSystem {
             * smoothstep(-0.58, -0.24, vFishLocal.z) * smoothstep(0.55, 0.2, vFishLocal.z);
           float mouth = smoothstep(0.62, 0.77, vFishLocal.z)
             * (1.0 - smoothstep(-0.075, -0.005, vFishLocal.y));
-          vec3 silver = mix(vec3(0.48, 0.67, 0.63), vec3(0.09, 0.35, 0.39), dorsal);
-          vec3 chromis = mix(vec3(0.18, 0.63, 0.69), vec3(0.035, 0.18, 0.43), dorsal);
-          chromis = mix(chromis, vec3(0.74, 0.61, 0.1), (1.0 - smoothstep(-0.7, -0.52, vFishLocal.z)) * 0.72);
-          vec3 anthias = mix(vec3(0.8, 0.31, 0.15), vec3(0.5, 0.045, 0.18), dorsal);
+          vec3 silver = mix(vec3(0.16, 0.78, 0.68), vec3(0.12, 0.2, 0.6), dorsal);
+          vec3 chromis = mix(vec3(0.045, 0.48, 0.89), vec3(0.025, 0.11, 0.47), dorsal);
+          chromis = mix(chromis, vec3(0.94, 0.71, 0.07), (1.0 - smoothstep(-0.7, -0.52, vFishLocal.z)) * 0.94);
+          vec3 anthias = mix(vec3(0.94, 0.38, 0.17), vec3(0.64, 0.055, 0.4), dorsal);
           anthias = mix(anthias, vec3(0.86, 0.58, 0.13), flankBand * 0.42);
           float butterflyBands = smoothstep(0.25, 0.82, sin((vFishLocal.z + 0.72) * 14.0) * 0.5 + 0.5);
           vec3 butterfly = mix(vec3(0.74, 0.61, 0.19), vec3(0.025, 0.085, 0.12), butterflyBands * 0.88);
@@ -133,7 +135,14 @@ export class FishSchoolSystem {
           float scaleSpark = smoothstep(0.88, 0.995, scaleMottle * 0.5 + 0.5)
             * (0.35 + 0.65 * sin(vFishLocal.z * 61.0 + vFishLocal.y * 47.0) * 0.5 + 0.325);
           diffuseColor.rgb += vec3(0.13, 0.2, 0.18) * scaleSpark * flankBand * 0.18;
-          diffuseColor.rgb *= 1.0 - rearBars * 0.2 - gill * 0.34 - lateralLine * 0.24 - mouth * 0.32;`,
+          vec2 scaleUv = vec2(vFishLocal.z * 29.0, vFishLocal.y * 38.0);
+          scaleUv.x += mod(floor(scaleUv.y), 2.0) * 0.5;
+          float scaleArc = 1.0 - smoothstep(0.025, 0.1, abs(length(fract(scaleUv) - vec2(0.5, 0.35)) - 0.48));
+          diffuseColor.rgb *= 1.0 - scaleArc * flankBand * 0.085;
+          float tail = 1.0 - smoothstep(-0.69, -0.61, vFishLocal.z);
+          float rays = pow(abs(cos(atan(vFishLocal.y, -vFishLocal.z - 0.58) * 24.0)), 14.0);
+          diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.5, 0.71, 0.8), tail * rays * 0.32);
+          diffuseColor.rgb *= 1.0 - rearBars * 0.12 - gill * 0.34 - lateralLine * 0.24 - mouth * 0.32;`,
         )
         .replace(
           '#include <opaque_fragment>',
@@ -142,16 +151,16 @@ export class FishSchoolSystem {
         );
       this.fishShader = shader as FishShader;
     };
-    material.customProgramCacheKey = () => 'tidal-instanced-fish-v7-pattern-contrast';
+    material.customProgramCacheKey = () => 'tidal-instanced-fish-v9-jewel-scales';
 
     this.mesh = new THREE.InstancedMesh(geometry, material, this.count);
     this.mesh.name = 'responsive-fish-school';
     this.mesh.frustumCulled = false;
     this.mesh.castShadow = preset.shadowMapSize > 0;
     this.mesh.receiveShadow = true;
-    const eyeGeometry = new THREE.SphereGeometry(0.058, 12, 8);
+    const eyeGeometry = new THREE.SphereGeometry(0.04, 12, 8);
     const eyeMaterial = new THREE.MeshPhysicalMaterial({
-      color: 0x9c9a69,
+      color: 0x91c4c5,
       roughness: 0.22,
       metalness: 0,
       clearcoat: 0.75,
@@ -161,7 +170,7 @@ export class FishSchoolSystem {
     this.eyes = new THREE.InstancedMesh(eyeGeometry, eyeMaterial, this.count * 2);
     this.eyes.name = 'fish-eyes';
     this.eyes.frustumCulled = false;
-    const pupilGeometry = new THREE.SphereGeometry(0.032, 10, 7);
+    const pupilGeometry = new THREE.SphereGeometry(0.024, 10, 7);
     const pupilMaterial = new THREE.MeshPhysicalMaterial({
       color: 0x020809,
       roughness: 0.06,
@@ -177,55 +186,21 @@ export class FishSchoolSystem {
   }
 
   private createFishGeometry(): THREE.BufferGeometry {
-    const vertices: number[] = [];
-    const indices: number[] = [];
-    const radialSegments = 10;
     const zLevels = [-0.68, -0.54, -0.31, -0.05, 0.2, 0.43, 0.63, 0.76];
     const radii = [0.045, 0.12, 0.21, 0.245, 0.235, 0.185, 0.1, 0.025];
-    for (let ring = 0; ring < zLevels.length; ring += 1) {
-      for (let segment = 0; segment < radialSegments; segment += 1) {
-        const angle = (segment / radialSegments) * Math.PI * 2;
-        const lateral = Math.cos(angle) * radii[ring];
-        const vertical = Math.sin(angle) * radii[ring] * 0.76;
-        vertices.push(lateral, vertical, zLevels[ring]);
-      }
-    }
-    for (let ring = 0; ring < zLevels.length - 1; ring += 1) {
-      for (let segment = 0; segment < radialSegments; segment += 1) {
-        const next = (segment + 1) % radialSegments;
-        const a = ring * radialSegments + segment;
-        const b = ring * radialSegments + next;
-        const c = (ring + 1) * radialSegments + next;
-        const d = (ring + 1) * radialSegments + segment;
-        indices.push(a, b, d, b, c, d);
-      }
-    }
-
-    const addVertex = (x: number, y: number, z: number): number => {
-      vertices.push(x, y, z);
-      return vertices.length / 3 - 1;
-    };
-    const tailRootTop = addVertex(0, 0.055, -0.63);
-    const tailRootBottom = addVertex(0, -0.055, -0.63);
-    const tailTop = addVertex(0, 0.36, -1.08);
-    const tailCenter = addVertex(0, 0, -0.86);
-    const tailBottom = addVertex(0, -0.32, -1.08);
-    indices.push(tailRootTop, tailTop, tailCenter, tailRootBottom, tailCenter, tailBottom);
-
-    const dorsalFront = addVertex(0, 0.17, 0.2);
-    const dorsalTip = addVertex(0, 0.36, -0.12);
-    const dorsalBack = addVertex(0, 0.15, -0.34);
-    indices.push(dorsalFront, dorsalTip, dorsalBack);
-
-    const finRoot = addVertex(0, -0.02, 0.08);
-    const leftFin = addVertex(-0.38, -0.06, -0.12);
-    const rightFin = addVertex(0.38, -0.06, -0.12);
-    const finBack = addVertex(0, -0.04, -0.26);
-    indices.push(finRoot, leftFin, finBack, finRoot, finBack, rightFin);
-
-    const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
-    geometry.setIndex(indices);
+    const curve = new THREE.CatmullRomCurve3(zLevels.map((z, i) => new THREE.Vector3(radii[i], z, 0)));
+    const body = new THREE.LatheGeometry(curve.getPoints(32).map((p) => new THREE.Vector2(Math.max(0.015, p.x), p.y)), 20);
+    body.rotateX(Math.PI / 2);
+    body.scale(1, 0.76, 1);
+    const parts = [body,
+      createFinMembrane([0, 0, -0.63, 0, 0.36, -1.08, 0, 0, -0.86]),
+      createFinMembrane([0, 0, -0.63, 0, 0, -0.86, 0, -0.32, -1.08]),
+      createFinMembrane([0, 0.17, 0.2, 0, 0.36, -0.12, 0, 0.15, -0.34]),
+      createFinMembrane([0.12, -0.02, 0.08, 0.38, -0.12, -0.12, 0.12, -0.08, -0.26]),
+      createFinMembrane([-0.12, -0.02, 0.08, -0.38, -0.12, -0.12, -0.12, -0.08, -0.26]),
+    ];
+    const geometry = mergeGeometries(parts)!;
+    for (const part of parts) part.dispose();
     geometry.computeVertexNormals();
     geometry.computeBoundingSphere();
     return geometry;
@@ -255,7 +230,7 @@ export class FishSchoolSystem {
       this.velocities[index] = range(random, -0.35, 0.35);
       this.velocities[index + 1] = range(random, -0.12, 0.12);
       this.velocities[index + 2] = range(random, -1.1, -0.35);
-      this.scales[i] = range(random, 0.4, 0.78);
+      this.scales[i] = range(random, 0.3, 0.5);
       if (i < this.closeFollowerCount) this.scales[i] = range(random, 0.32, 0.49);
       this.phases[i] = random() * Math.PI * 2;
       color.setHSL(range(random, 0.43, 0.57), range(random, 0.12, 0.31), range(random, 0.42, 0.62));
@@ -559,19 +534,20 @@ export class FishSchoolSystem {
       this.matrix.compose(this.position, this.orientations[i], this.scale);
       this.mesh.setMatrixAt(i, this.matrix);
 
-      this.eyeLocalMatrix.makeTranslation(-0.205, 0.035, 0.42);
-      this.eyeWorldMatrix.multiplyMatrices(this.matrix, this.eyeLocalMatrix);
-      this.eyes.setMatrixAt(i * 2, this.eyeWorldMatrix);
-      this.eyeLocalMatrix.makeTranslation(0.205, 0.035, 0.42);
-      this.eyeWorldMatrix.multiplyMatrices(this.matrix, this.eyeLocalMatrix);
-      this.eyes.setMatrixAt(i * 2 + 1, this.eyeWorldMatrix);
-
-      this.eyeLocalMatrix.makeTranslation(-0.248, 0.035, 0.425);
-      this.eyeWorldMatrix.multiplyMatrices(this.matrix, this.eyeLocalMatrix);
-      this.pupils.setMatrixAt(i * 2, this.eyeWorldMatrix);
-      this.eyeLocalMatrix.makeTranslation(0.248, 0.035, 0.425);
-      this.eyeWorldMatrix.multiplyMatrices(this.matrix, this.eyeLocalMatrix);
-      this.pupils.setMatrixAt(i * 2 + 1, this.eyeWorldMatrix);
+      // Match the species proportions used in the body vertex shader.
+      const species = this.mesh.geometry.getAttribute('aFishSpecies').getX(i);
+      const width = species === 2 ? 0.72 : species === 3 ? 0.82 : 1;
+      const height = species === 2 ? 0.74 : species === 3 ? 1.24 : 1;
+      const length = species === 2 ? 1.12 : species === 3 ? 0.88 : 1;
+      for (let side = 0; side < 2; side += 1) {
+        const sign = side === 0 ? -1 : 1;
+        this.eyeLocalMatrix.makeTranslation(sign * 0.176 * width, 0.035 * height, 0.43 * length);
+        this.eyeWorldMatrix.multiplyMatrices(this.matrix, this.eyeLocalMatrix);
+        this.eyes.setMatrixAt(i * 2 + side, this.eyeWorldMatrix);
+        this.eyeLocalMatrix.makeTranslation(sign * (0.176 * width + 0.029), 0.035 * height, 0.434 * length);
+        this.eyeWorldMatrix.multiplyMatrices(this.matrix, this.eyeLocalMatrix);
+        this.pupils.setMatrixAt(i * 2 + side, this.eyeWorldMatrix);
+      }
     }
     this.mesh.instanceMatrix.needsUpdate = true;
     this.eyes.instanceMatrix.needsUpdate = true;

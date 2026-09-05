@@ -57,10 +57,10 @@ export class HeroFishSystem {
       const bounds = new THREE.Box3().setFromObject(model);
       const size = bounds.getSize(new THREE.Vector3());
       const center = bounds.getCenter(new THREE.Vector3());
-      const targetLength = 2.85;
+      const targetLength = 0.95;
       const scale = targetLength / Math.max(size.x, size.y, size.z);
 
-      model.position.copy(center).multiplyScalar(-1);
+      model.position.copy(center).multiplyScalar(-scale);
       model.scale.setScalar(scale);
       model.traverse((child) => {
         if (!(child instanceof THREE.Mesh)) return;
@@ -70,7 +70,7 @@ export class HeroFishSystem {
         const tuned = materials.map((source) => {
           const material = source.clone();
           if (material instanceof THREE.MeshStandardMaterial) {
-            material.roughness = THREE.MathUtils.clamp(material.roughness, 0.4, 0.52);
+            material.roughness = THREE.MathUtils.clamp(material.roughness, 0.32, 0.42);
             material.metalness = Math.min(material.metalness, 0.012);
             material.envMapIntensity = 0.66;
             material.onBeforeCompile = (shader) => {
@@ -128,8 +128,8 @@ export class HeroFishSystem {
       adult.add(model);
       this.group.add(adult);
       this.focusableFish.push({ anchor: adult, baseScale: adult.scale.clone(), focus: 0 });
-      this.addCompanion(model, 0.5, 1.17, -0.74, 0.42, -2.1);
-      this.addCompanion(model, 0.37, 3.82, 0.92, -0.34, -3.05);
+      this.addCompanion(model, 0.8, 1.17, -0.55, 0.32, -1.1);
+      this.addCompanion(model, 0.67, 3.82, 0.62, -0.24, -1.7);
       this.samplePath(0, this.basePosition);
       this.previousBasePosition.copy(this.basePosition).addScaledVector(this.forward, -0.1);
       this.group.position.copy(this.basePosition);
